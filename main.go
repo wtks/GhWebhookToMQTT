@@ -8,13 +8,14 @@ import (
 	"os"
 )
 
-const ClientID = "GhWebhookToMQTT"
-
 var (
+	MQTTClientID = os.Getenv("MQTT_CLIENT_ID")
 	MQTTHost     = os.Getenv("MQTT_HOST")
 	MQTTUserName = os.Getenv("MQTT_USERNAME")
 	MQTTPassword = os.Getenv("MQTT_PASSWORD")
 	GithubSecret = os.Getenv("GITHUB_SECRET")
+	TopicPrefix  = os.Getenv("TOPIC_PREFIX")
+	Port         = os.Getenv("HTTP_PORT")
 
 	AcceptableEvents = []github.Event{
 		github.PushEvent,
@@ -22,12 +23,22 @@ var (
 )
 
 func main() {
+	if len(TopicPrefix) == 0 {
+		TopicPrefix = "/GhWebhook/"
+	}
+	if len(MQTTClientID) == 0 {
+		MQTTClientID = "GhWebhookToMQTT"
+	}
+	if len(Port) == 0 {
+		Port = "8080"
+	}
+
 	// init mqtt client
 	mqttOpt := mqtt.NewClientOptions()
 	mqttOpt.AddBroker(MQTTHost)
 	mqttOpt.SetUsername(MQTTUserName)
 	mqttOpt.SetPassword(MQTTPassword)
-	mqttOpt.SetClientID(ClientID)
+	mqttOpt.SetClientID(MQTTClientID)
 
 	client := mqtt.NewClient(mqttOpt)
 	defer client.Disconnect(250)
@@ -52,16 +63,16 @@ func main() {
 			return
 		}
 
-		log.Println("Webhook received")
+		log.Println("Webhook was received")
 		var (
-			topic   = "/GhWebhook/"
+			topic   = TopicPrefix
 			message = ""
 		)
 
 		switch v := payload.(type) {
 		case github.PushPayload:
 			topic += v.Repository.FullName + "/push"
-			message = "ref:" + v.Ref
+			message = v.Ref
 		}
 
 		token := client.Publish(topic, 1, false, message)
@@ -71,11 +82,11 @@ func main() {
 			return
 		}
 
-		log.Println("a MQTT Message published")
+		log.Println("a Message was published:", topic)
 
 		rw.WriteHeader(http.StatusOK)
 		_, _ = rw.Write([]byte("OK"))
 		return
 	})
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":"+Port, nil))
 }
