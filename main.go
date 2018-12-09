@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"github.com/eclipse/paho.mqtt.golang"
 	"gopkg.in/go-playground/webhooks.v5/github"
 	"log"
@@ -19,6 +20,7 @@ var (
 
 	AcceptableEvents = []github.Event{
 		github.PushEvent,
+		github.ReleaseEvent,
 	}
 )
 
@@ -72,7 +74,17 @@ func main() {
 		switch v := payload.(type) {
 		case github.PushPayload:
 			topic += v.Repository.FullName + "/push"
-			message = v.Ref
+			message = convertToJson(map[string]interface{}{
+				"ref": v.Ref,
+			})
+		case github.ReleasePayload:
+			topic += v.Repository.FullName + "/release"
+			message = convertToJson(map[string]interface{}{
+				"id":        v.Release.ID,
+				"tag":       v.Release.TagName,
+				"draft":     v.Release.Draft,
+				"hasAssets": len(v.Release.Assets) > 0,
+			})
 		}
 
 		token := client.Publish(topic, 1, false, message)
@@ -89,4 +101,9 @@ func main() {
 		return
 	})
 	log.Fatal(http.ListenAndServe(":"+Port, nil))
+}
+
+func convertToJson(m map[string]interface{}) string {
+	b, _ := json.Marshal(m)
+	return string(b)
 }
